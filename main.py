@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 import requests
 from pymongo import MongoClient
 from dotenv import load_dotenv
+import certifi
 
 load_dotenv()
 
@@ -27,7 +28,11 @@ mongo_client = None
 db = None
 if MONGODB_URI:
     try:
-        mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=3000)
+        mongo_client = MongoClient(
+            MONGODB_URI, 
+            serverSelectionTimeoutMS=5000,
+            tlsCAFile=certifi.where()
+        )
         db = mongo_client["labpulse"]
         db.command("ping")
         print("Connected to MongoDB Atlas successfully.")
