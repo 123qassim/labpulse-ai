@@ -14,7 +14,7 @@
           <span class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
           <h1 class="text-2xl font-bold tracking-tight text-white">LabPulse AI</h1>
         </div>
-        <p class="text-xs text-slate-400 mt-1">Open-Weight Gemma 2 • Molecular Biology Bench Assistant</p>
+        <p class="text-xs text-slate-400 mt-1">Open-Weight Gemma 2 • Edge Diagnostic Assistant</p>
       </div>
       <div class="flex gap-2 text-xs">
         <span class="bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-1 rounded">Gemma 2</span>
@@ -23,13 +23,24 @@
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <section class="bg-slate-900/80 border border-slate-800 p-6 rounded-xl shadow-lg">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-3">Raw Bench Notes</h2>
-        <textarea id="rawNotes" rows="8" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono resize-none" placeholder="Paste unformatted lab notes, PCR cycle observations, or spectrophotometer readings..."></textarea>
-        
-        <div class="flex gap-2 mt-3">
-          <button onclick="setSample(1)" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Sample PCR</button>
-          <button onclick="setSample(2)" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Sample Nanodrop</button>
+      <!-- Input Panel -->
+      <section class="bg-slate-900/80 border border-slate-800 p-6 rounded-xl shadow-lg flex flex-col justify-between">
+        <div>
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Raw Bench Notes</h2>
+            <!-- Hands-Free Voice Button -->
+            <button id="micBtn" onclick="toggleVoiceDictation()" class="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded border border-slate-700 transition">
+              <span id="micIcon">🎙️</span>
+              <span id="micText">Voice Dictation</span>
+            </button>
+          </div>
+
+          <textarea id="rawNotes" rows="8" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono resize-none" placeholder="Paste unformatted lab notes, or click 'Voice Dictation' to dictate hands-free while wearing gloves..."></textarea>
+          
+          <div class="flex gap-2 mt-3">
+            <button onclick="setSample(1)" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Sample PCR</button>
+            <button onclick="setSample(2)" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Sample Nanodrop OD</button>
+          </div>
         </div>
 
         <button id="processBtn" onclick="processNotes()" class="w-full mt-5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 rounded-lg transition flex items-center justify-center gap-2">
@@ -37,6 +48,7 @@
         </button>
       </section>
 
+      <!-- Output Panel -->
       <section class="bg-slate-900/80 border border-slate-800 p-6 rounded-xl shadow-lg flex flex-col justify-between">
         <div>
           <div class="flex justify-between items-center mb-3">
@@ -45,17 +57,26 @@
           </div>
 
           <div id="outputContent" class="text-sm text-slate-400 italic">
-            Process bench notes on the left to extract experimental parameters and schema-validated JSON.
+            Process bench notes on the left or use voice dictation to extract experimental parameters, purity indices, and schema-validated JSON.
           </div>
         </div>
 
-        <div id="jsonContainer" class="mt-6 hidden">
+        <div id="actionToolbar" class="mt-4 pt-4 border-t border-slate-800 hidden flex justify-between items-center">
+          <button onclick="copyIMRADReport()" class="text-xs bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 px-3 py-1.5 rounded transition flex items-center gap-1.5">
+            <span>📋</span>
+            <span id="copyBtnText">Copy Lab Notebook Entry (IMRAD)</span>
+          </button>
+          <span class="text-[10px] text-slate-500 font-mono">Persisted to MongoDB Atlas</span>
+        </div>
+
+        <div id="jsonContainer" class="mt-4 hidden">
           <h3 class="text-xs uppercase text-slate-500 mb-1 font-mono">Validated Payload</h3>
-          <pre id="jsonPayload" class="bg-slate-950 border border-slate-800 p-3 rounded text-xs font-mono text-emerald-400 overflow-x-auto max-h-40"></pre>
+          <pre id="jsonPayload" class="bg-slate-950 border border-slate-800 p-3 rounded text-xs font-mono text-emerald-400 overflow-x-auto max-h-36"></pre>
         </div>
       </section>
     </div>
 
+    <!-- History Panel -->
     <section class="mt-12">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-semibold text-slate-200">Recent Experiment Records</h2>
@@ -69,12 +90,13 @@
               <th class="p-3">Assay</th>
               <th class="p-3">Sample</th>
               <th class="p-3">Parameters</th>
+              <th class="p-3">Diagnostic QC</th>
               <th class="p-3">Anomalies</th>
             </tr>
           </thead>
           <tbody id="historyBody" class="divide-y divide-slate-800 bg-slate-950">
             <tr>
-              <td colspan="5" class="p-4 text-center text-slate-500">No records saved yet.</td>
+              <td colspan="6" class="p-4 text-center text-slate-500">Loading audit records...</td>
             </tr>
           </tbody>
         </table>
@@ -83,6 +105,10 @@
   </div>
 
   <script>
+    let activeRunData = null;
+    let isRecording = false;
+    let recognition = null;
+
     const samples = {
       1: "16S rRNA gene PCR amplification from bacterial colony 4B. Annealing temperature set to 57.5 C for 32 cycles. Strong target band at ~1500 bp, minor non-specific banding visible near 400 bp. Master mix buffer lot expired last week.",
       2: "Plasmid DNA extraction purity check on Nanodrop. Tube A3 yielded optical density A260/A280 ratio of 1.84 and A260/A230 of 2.12. Concentration at 145 ng/uL. No protein contamination detected."
@@ -90,6 +116,76 @@
 
     function setSample(idx) {
       document.getElementById('rawNotes').value = samples[idx];
+    }
+
+    // Hands-Free Browser Voice Dictation
+    function toggleVoiceDictation() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Speech Recognition API is not supported in this browser. Please use Google Chrome or Microsoft Edge.");
+        return;
+      }
+
+      const micBtn = document.getElementById('micBtn');
+      const micText = document.getElementById('micText');
+      const micIcon = document.getElementById('micIcon');
+      const notesArea = document.getElementById('rawNotes');
+
+      if (!isRecording) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          isRecording = true;
+          micText.textContent = "Listening...";
+          micBtn.className = "flex items-center gap-1.5 text-xs bg-rose-950 text-rose-300 border border-rose-700 px-2.5 py-1 rounded transition animate-pulse";
+          micIcon.textContent = "🔴";
+        };
+
+        recognition.onresult = (event) => {
+          let transcript = "";
+          for (let i = 0; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript + " ";
+          }
+          notesArea.value = transcript.trim();
+        };
+
+        recognition.onerror = (err) => {
+          console.error("Speech error:", err);
+          stopRecording();
+        };
+
+        recognition.onend = () => {
+          stopRecording();
+        };
+
+        recognition.start();
+      } else {
+        if (recognition) recognition.stop();
+        stopRecording();
+      }
+    }
+
+    function stopRecording() {
+      isRecording = false;
+      const micBtn = document.getElementById('micBtn');
+      document.getElementById('micText').textContent = "Voice Dictation";
+      document.getElementById('micIcon').textContent = "🎙️";
+      micBtn.className = "flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded border border-slate-700 transition";
+    }
+
+    // Diagnostic Purity Assessor (A260/A280)
+    function evaluatePurity(od) {
+      if (!od) return { label: "N/A", color: "text-slate-500", badge: "bg-slate-800 text-slate-400" };
+      if (od >= 1.75 && od <= 2.05) {
+        return { label: "Optimal Pure DNA", color: "text-emerald-400", badge: "bg-emerald-950 text-emerald-400 border border-emerald-800" };
+      } else if (od < 1.75) {
+        return { label: "Protein Contamination Risk", color: "text-rose-400", badge: "bg-rose-950 text-rose-300 border border-rose-800" };
+      } else {
+        return { label: "RNA Residual / High OD", color: "text-amber-400", badge: "bg-amber-950 text-amber-300 border border-amber-800" };
+      }
     }
 
     async function processNotes() {
@@ -108,15 +204,14 @@
           body: JSON.stringify({ raw_notes: notes })
         });
 
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`Server returned ${res.status}: ${errText}`);
-        }
-
+        if (!res.ok) throw new Error("Inference failed");
         const data = await res.json();
+        activeRunData = data;
         
+        const purity = evaluatePurity(data.optical_density_ratio);
+
         statusTag.className = "text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
-        statusTag.textContent = "Saved";
+        statusTag.textContent = "Saved to MongoDB";
 
         document.getElementById('outputContent').innerHTML = `
           <div class="space-y-3 not-italic text-slate-200">
@@ -128,7 +223,10 @@
               <div class="p-2 bg-slate-950 rounded border border-slate-800"><span class="text-slate-500">Assay:</span> ${data.assay_type}</div>
               <div class="p-2 bg-slate-950 rounded border border-slate-800"><span class="text-slate-500">Sample:</span> ${data.target_sample}</div>
               <div class="p-2 bg-slate-950 rounded border border-slate-800"><span class="text-slate-500">Annealing Temp:</span> ${data.annealing_temp_celsius ? data.annealing_temp_celsius + ' °C' : 'N/A'}</div>
-              <div class="p-2 bg-slate-950 rounded border border-slate-800"><span class="text-slate-500">OD 260/280:</span> ${data.optical_density_ratio || 'N/A'}</div>
+              <div class="p-2 bg-slate-950 rounded border border-slate-800">
+                <span class="text-slate-500">OD 260/280:</span> ${data.optical_density_ratio || 'N/A'} 
+                ${data.optical_density_ratio ? `<span class="block mt-0.5 font-semibold ${purity.color}">(${purity.label})</span>` : ''}
+              </div>
             </div>
             <div>
               <span class="text-xs text-rose-400 font-semibold uppercase">Anomalies Detected</span>
@@ -139,6 +237,7 @@
           </div>
         `;
 
+        document.getElementById('actionToolbar').classList.remove('hidden');
         document.getElementById('jsonPayload').textContent = JSON.stringify(data, null, 2);
         document.getElementById('jsonContainer').classList.remove('hidden');
         loadRuns();
@@ -150,22 +249,55 @@
       }
     }
 
+    // Export IMRAD Laboratory Notebook Slip
+    function copyIMRADReport() {
+      if (!activeRunData) return;
+      const purity = evaluatePurity(activeRunData.optical_density_ratio);
+      const text = `## Experimental Run Record: ${activeRunData.assay_type}
+**Timestamp:** ${activeRunData.timestamp}
+**Target Sample:** ${activeRunData.target_sample}
+
+### 1. Methodology & Parameters
+- Annealing Temperature: ${activeRunData.annealing_temp_celsius ? activeRunData.annealing_temp_celsius + ' °C' : 'N/A'}
+- Cycles: ${activeRunData.cycle_count || 'N/A'}
+- Optical Density (A260/A280): ${activeRunData.optical_density_ratio || 'N/A'} [QC Status: ${purity.label}]
+
+### 2. Observations & Anomaly Analysis
+- Summary: ${activeRunData.clean_summary}
+- Anomalies / Flags: ${activeRunData.anomalies.join('; ') || 'None recorded'}
+
+*Parsed and verified via LabPulse AI (Gemma 2 open-weight inference).*`;
+
+      navigator.clipboard.writeText(text).then(() => {
+        const copyBtnText = document.getElementById('copyBtnText');
+        copyBtnText.textContent = "Copied to Clipboard!";
+        setTimeout(() => { copyBtnText.textContent = "Copy Lab Notebook Entry (IMRAD)"; }, 2500);
+      });
+    }
+
     async function loadRuns() {
       try {
         const res = await fetch('/api/runs');
         const runs = await res.json();
         const tbody = document.getElementById('historyBody');
-        if (!runs.length) return;
+        if (!runs.length) {
+          tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">No records saved yet.</td></tr>`;
+          return;
+        }
 
-        tbody.innerHTML = runs.map(r => `
-          <tr>
-            <td class="p-3">${r.timestamp}</td>
-            <td class="p-3 font-semibold text-slate-300">${r.assay_type}</td>
-            <td class="p-3">${r.target_sample}</td>
-            <td class="p-3">${r.annealing_temp_celsius ? r.annealing_temp_celsius + '°C' : ''} ${r.optical_density_ratio ? 'OD:' + r.optical_density_ratio : ''}</td>
-            <td class="p-3 ${r.anomalies.length ? 'text-amber-400' : 'text-slate-500'}">${r.anomalies.join(', ') || 'None'}</td>
-          </tr>
-        `).join('');
+        tbody.innerHTML = runs.map(r => {
+          const purity = evaluatePurity(r.optical_density_ratio);
+          return `
+            <tr>
+              <td class="p-3 text-slate-400">${r.timestamp}</td>
+              <td class="p-3 font-semibold text-slate-200">${r.assay_type}</td>
+              <td class="p-3 text-slate-300">${r.target_sample}</td>
+              <td class="p-3 text-slate-300">${r.annealing_temp_celsius ? r.annealing_temp_celsius + '°C' : ''} ${r.optical_density_ratio ? 'OD:' + r.optical_density_ratio : ''}</td>
+              <td class="p-3"><span class="px-2 py-0.5 rounded text-[11px] ${purity.badge}">${purity.label}</span></td>
+              <td class="p-3 ${r.anomalies.length && r.anomalies[0] !== 'None reported' ? 'text-amber-400' : 'text-slate-500'}">${r.anomalies.join(', ')}</td>
+            </tr>
+          `;
+        }).join('');
       } catch (err) {
         console.error(err);
       }
